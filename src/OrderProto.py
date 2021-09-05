@@ -25,7 +25,7 @@ class orderProto():
         self.quoteAsset = info["quoteAsset"] # Название котировочного актива. В нем идет торговля!
         self.round_price = abs(round(math.log(float(info['filters'][0]['tickSize']), 10)))  # округление цены
         self.round_qty = abs(round(math.log(float(info['filters'][2]['stepSize']), 10))) # округление количества
-        # self.minNotional = float(info['filters'][3]['minNotional']) # минимальное значение price*qty
+        self.minNotional = float(info['filters'][3]['minNotional']) # минимальное значение price*qty
         # self.quotePrecision = info['quotePrecision'] # котировочная точность, нигде не используется
 
         self.baseAsset_balance = 0.0
