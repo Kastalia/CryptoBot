@@ -3,7 +3,8 @@ from threading import Thread
 from time import sleep
 import math
 
-import logging
+#import src.logger as logger
+import logger
 
 
 WARNING_NOT_CLOSED_ORDER="NOT_CLOSED_ORDER"
@@ -41,9 +42,7 @@ class orderProto():
         self.orderFilledQuantity = 0.0
         self.ordersZombie = []
 
-        #_log_format = "[%(asctime)s] %(levelname)-8s - %(name) - (%(filename)s).%(funcName)s(%(lineno)d) - %(message)s"
-        _log_format = "[%(asctime)s] %(levelname)-8s %(message)s"
-        logging.basicConfig(filename="log", format=_log_format, level=logging.INFO, datefmt="%H:%M:%S %d-%m-%Y")
+        self.log = logger.get_logger("orderManager")
         self._logging_info()
 
 
@@ -196,7 +195,7 @@ class orderProto():
         self.bnb_balance = float(self.connector.get_asset_balance("BNB")['free'])
 
     def _logging_info(self):
-        logging.info(
+        self.log.info(
             f"{self.orderSide}-{self.orderId} {self.orderStatus} price={self.orderPrice} "
             f"{self.orderFilledQuantity}/{self.orderQuantity} "
             f"{self.baseAsset}={self.baseAsset_balance} {self.quoteAsset}={self.quoteAsset_balance} "
@@ -209,20 +208,20 @@ class orderProto():
         orderPrice = float(response["price"])
         orderQuantity = float(response["origQty"])
         orderFilledQuantity = float(response["executedQty"])
-        logging.info(
+        self.log.info(
             f"{orderSide}-{orderId} {orderStatus} price={orderPrice} "
             f"{orderFilledQuantity}/{orderQuantity} "
             f"{self.baseAsset}={self.baseAsset_balance} {self.quoteAsset}={self.quoteAsset_balance} "
             f"BNB={self.bnb_balance}")
 
     def _logging_info_balance(self):
-        logging.info(
+        self.log.info(
             f"UPDATE BALANCE: "
             f"{self.baseAsset}={self.baseAsset_balance} {self.quoteAsset}={self.quoteAsset_balance} "
             f"BNB={self.bnb_balance}")
 
     def _logging_warning(self, comment):
-        logging.warning(
+        self.log.warning(
             f"{comment} {self.orderSide}-{self.orderId} {self.orderStatus} price={self.orderPrice} "
             f"{self.orderFilledQuantity}/{self.orderQuantity} "
             f"{self.baseAsset}={self.baseAsset_balance} {self.quoteAsset}={self.quoteAsset_balance} "
