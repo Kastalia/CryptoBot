@@ -1,10 +1,14 @@
-from binance import ThreadedWebsocketManager
 import math
 from time import time
 
+from binance import ThreadedWebsocketManager
+
+import loggercrypto
+
+
 ERROR_NOT_CORRECT_PARAMS="NOT_CORRECT_PARAMS"
 
-class algorithmTrap():
+class Trap():
     def __init__(self, orderManager, walletPercent, position, burstPercent, recoveryPercent,
                  partiallyFilled_timer,
                  buffer_percentLower, buffer_percentUpper, buffer_timer,

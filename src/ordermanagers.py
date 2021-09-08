@@ -1,17 +1,17 @@
-from binance import ThreadedWebsocketManager, Client
 from threading import Thread
 from time import sleep
 import math
 
-#import src.logger as logger
-import logger
+from binance import ThreadedWebsocketManager, Client
+
+import loggercrypto
 
 
 WARNING_NOT_CLOSED_ORDER="NOT_CLOSED_ORDER"
 WARNING_UNEXPECTED_WS="UNEXPECTED_WS"
 
 
-class orderProto():
+class Spot:
 
     def __init__(self, api_key, api_secret, enableTestnet, symbol):
         self.api_key = api_key
@@ -42,7 +42,7 @@ class orderProto():
         self.orderFilledQuantity = 0.0
         self.ordersZombie = []
 
-        self.log = logger.get_logger("orderManager")
+        self.logger = loggercrypto.get_logger("orderManager")
         self._logging_info()
 
 
@@ -195,7 +195,7 @@ class orderProto():
         self.bnb_balance = float(self.connector.get_asset_balance("BNB")['free'])
 
     def _logging_info(self):
-        self.log.info(
+        self.logger.info(
             f"{self.orderSide}-{self.orderId} {self.orderStatus} price={self.orderPrice} "
             f"{self.orderFilledQuantity}/{self.orderQuantity} "
             f"{self.baseAsset}={self.baseAsset_balance} {self.quoteAsset}={self.quoteAsset_balance} "
@@ -208,20 +208,20 @@ class orderProto():
         orderPrice = float(response["price"])
         orderQuantity = float(response["origQty"])
         orderFilledQuantity = float(response["executedQty"])
-        self.log.info(
+        self.logger.info(
             f"{orderSide}-{orderId} {orderStatus} price={orderPrice} "
             f"{orderFilledQuantity}/{orderQuantity} "
             f"{self.baseAsset}={self.baseAsset_balance} {self.quoteAsset}={self.quoteAsset_balance} "
             f"BNB={self.bnb_balance}")
 
     def _logging_info_balance(self):
-        self.log.info(
+        self.logger.info(
             f"UPDATE BALANCE: "
             f"{self.baseAsset}={self.baseAsset_balance} {self.quoteAsset}={self.quoteAsset_balance} "
             f"BNB={self.bnb_balance}")
 
     def _logging_warning(self, comment):
-        self.log.warning(
+        self.logger.warning(
             f"{comment} {self.orderSide}-{self.orderId} {self.orderStatus} price={self.orderPrice} "
             f"{self.orderFilledQuantity}/{self.orderQuantity} "
             f"{self.baseAsset}={self.baseAsset_balance} {self.quoteAsset}={self.quoteAsset_balance} "
