@@ -78,9 +78,11 @@ class Trap:
         self.timeEvent = 0.0
         self.buffer_priceLower = 0.0
         self.buffer_priceUpper = 0.0
+        self.burstPrice = 0.0
         self.recoveryPrice = 0.0
 
         self.logger = loggercrypto.get_logger(__class__.__name__)
+
 
     def step(self, price, tradeTime):
         if self.position == "SHORT":
@@ -91,9 +93,9 @@ class Trap:
     def _step_short(self, price, tradeTime):
         if self.stage == "STAGE1":
             self.priceEntry = price
-            burstPrice = price * self.burstMultiplier
+            self.burstPrice = price * self.burstMultiplier
             self.quantity = self.orderManager.baseAsset_balance * self.walletMultiplier
-            self.orderManager.sell(burstPrice, self.quantity)
+            self.orderManager.sell(self.burstPrice, self.quantity)
             self.buffer_priceLower = price * self.buffer_multiplierLower
             self.buffer_priceUpper = price * self.buffer_multiplierUpper
             self.recoveryPrice = price * self.recoveryMultiplier
@@ -150,30 +152,36 @@ class Trap:
     def _step_long(self, price, tradeTime):
         if self.stage == "STAGE1":
             self.priceEntry = price
-            burstPrice = price * self.burstMultiplier
+            self.burstPrice = price * self.burstMultiplier
             self.quantity = self.orderManager.quoteAsset_balance * self.walletMultiplier / price
-            self.orderManager.buy(burstPrice, self.quantity)
+            self.orderManager.buy(self.burstPrice, self.quantity)
             self.buffer_priceLower = price * self.buffer_multiplierLower
             self.buffer_priceUpper = price * self.buffer_multiplierUpper
             self.recoveryPrice = price * self.recoveryMultiplier
+            self.logger.info(f"{self.stage} price={price} Trap={self.burstPrice}/{self.recoveryPrice} "
+                             f"[{self.buffer_priceLower}:{self.buffer_priceUpper}]")
             self.stage = "STAGE2"
             return
 
         elif self.stage == "STAGE2":
             if self.orderManager.orderStatus == "FILLED":
                 self.orderManager.sell(self.recoveryPrice, self.quantity)
+                self.logger.info(f"{self.stage}-FILLED price={price} Trap={self.burstPrice}/{self.recoveryPrice}")
                 self.stage = "STAGE3"
                 return
             elif self.orderManager.orderStatus == "PARTIALLY_FILLED":
                 self.timeEvent = time()
+                self.logger.info(f"{self.stage}-PARTIALLY_FILLED price={price} Trap={self.burstPrice}/{self.recoveryPrice}")
                 self.stage = "STAGE2a"
                 return
             elif price < self.buffer_priceLower:
                 self.orderManager.cancel()
+                self.logger.info(f"{self.stage}-BUFFER_LOWER price={price}")
                 self.stage = "STAGE1"
                 return
             elif price > self.buffer_priceUpper:
                 self.timeEvent = time()
+                self.logger.info(f"{self.stage}-BUFFER_UPPER price={price} Trap={self.burstPrice}/{self.recoveryPrice}")
                 self.stage = "STAGE2b"
                 return
 
@@ -181,28 +189,36 @@ class Trap:
             # PARTIALLY_FILLED ждем пока доделается или отменяем по таймеру
             if self.orderManager.orderStatus == "FILLED":
                 self.orderManager.sell(self.recoveryPrice, self.quantity)
+                self.logger.info(f"{self.stage}-FILLED price={price} Trap={self.burstPrice}/{self.recoveryPrice}")
                 self.stage = "STAGE3"
                 return
             elif (time() - self.timeEvent) > self.partiallyFilled_timer:
                 self.orderManager.cancel()
+                quantity_old = self.quantity
                 self.quantity = self.orderManager.orderFilledQuantity
                 self.orderManager.sell(self.recoveryPrice, self.quantity)
+                self.logger.info(f"{self.stage}-PARTIALLY_FILLED price={price} {quantity_old}/{self.quantity}"
+                                 f" Trap={self.burstPrice}/{self.recoveryPrice}")
                 self.stage = "STAGE3"
                 return
 
         elif self.stage == "STAGE2b":
             # таймер буфера
             if price <= self.buffer_priceUpper:
+                self.logger.info(f"{self.stage}-BUFFER_UPPER-PRICE_RECOVER price={price} "
+                                 f"Trap={self.burstPrice}/{self.recoveryPrice}")
                 self.stage = "STAGE2"
                 return
             elif (time() - self.timeEvent) > self.buffer_timer:
                 self.orderManager.cancel()
+                self.logger.info(f"{self.stage}-BUFFER_UPPER-OUT_OF_TIME={(time() - self.timeEvent)} price={price}")
                 self.stage = "STAGE1"
                 return
 
         elif self.stage == "STAGE3":
             # отслеживаем продажу и stoploss
             if self.orderManager.orderStatus == "FILLED":
+                self.logger.info(f"{self.stage}-FINISH price={price}")
                 self.stage = "STAGE1"
                 return
 
