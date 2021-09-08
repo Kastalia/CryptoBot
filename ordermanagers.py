@@ -6,7 +6,6 @@ from binance import ThreadedWebsocketManager, Client
 
 import loggercrypto
 
-
 WARNING_NOT_CLOSED_ORDER="NOT_CLOSED_ORDER"
 WARNING_UNEXPECTED_WS="UNEXPECTED_WS"
 
@@ -42,7 +41,7 @@ class Spot:
         self.orderFilledQuantity = 0.0
         self.ordersZombie = []
 
-        self.logger = loggercrypto.get_logger("orderManager")
+        self.logger = loggercrypto.get_logger(__class__.__name__)
         self._logging_info()
 
 

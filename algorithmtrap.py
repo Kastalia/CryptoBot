@@ -5,15 +5,15 @@ from binance import ThreadedWebsocketManager
 
 import loggercrypto
 
+ERROR_NOT_CORRECT_PARAMS = "NOT_CORRECT_PARAMS"
 
-ERROR_NOT_CORRECT_PARAMS="NOT_CORRECT_PARAMS"
 
-class Trap():
+class Trap:
     def __init__(self, orderManager, walletPercent, position, burstPercent, recoveryPercent,
                  partiallyFilled_timer,
                  buffer_percentLower, buffer_percentUpper, buffer_timer,
                  stopLoss_percentStart, stopLoss_percentStep, stopLoss_percentFinish,
-                 stopLoss_timerStart, stopLoss_timerStep ):
+                 stopLoss_timerStart, stopLoss_timerStep):
         """
         Криптобот, работающий по алгоритму "Ловушка"
         Внимание: все проценты считаются от цены входа в алгоритм
@@ -33,32 +33,32 @@ class Trap():
         """
         self.orderManager = orderManager
         self.walletPercent = walletPercent
-        self.walletMultiplier = self.walletPercent/100.0
-        self.position = position # SHORT\LONG
+        self.walletMultiplier = self.walletPercent / 100.0
+        self.position = position  # SHORT\LONG
 
         self.partiallyFilled_timer = partiallyFilled_timer
 
-        assert recoveryPercent<burstPercent, ERROR_NOT_CORRECT_PARAMS
+        assert recoveryPercent < burstPercent, ERROR_NOT_CORRECT_PARAMS
         self.burstPercent = burstPercent
         self.recoveryPercent = recoveryPercent
-        if self.position=="SHORT":
-            self.burstMultiplier = 1.0 + self.burstPercent/100.0
-            self.recoveryMultiplier = 1.0 + self.recoveryPercent/100.0
-        elif self.position=="LONG":
-            self.burstMultiplier = 1.0 - self.burstPercent/100.0
-            self.recoveryMultiplier = 1.0 - self.recoveryPercent/100.0
+        if self.position == "SHORT":
+            self.burstMultiplier = 1.0 + self.burstPercent / 100.0
+            self.recoveryMultiplier = 1.0 + self.recoveryPercent / 100.0
+        elif self.position == "LONG":
+            self.burstMultiplier = 1.0 - self.burstPercent / 100.0
+            self.recoveryMultiplier = 1.0 - self.recoveryPercent / 100.0
 
         self.buffer_percentLower = buffer_percentLower
-        self.buffer_multiplierLower = 1.0 - self.buffer_percentLower/100.0
+        self.buffer_multiplierLower = 1.0 - self.buffer_percentLower / 100.0
         self.buffer_percentUpper = buffer_percentUpper
-        self.buffer_multiplierUpper = 1.0 + self.buffer_percentUpper/100.0
+        self.buffer_multiplierUpper = 1.0 + self.buffer_percentUpper / 100.0
         self.buffer_timer = buffer_timer
 
         self.stopLoss_percentStart = stopLoss_percentStart
         self.stopLoss_percentStep = stopLoss_percentStep
         self.stopLoss_percentFinish = stopLoss_percentFinish
         n_multipliers = math.ceil(abs(
-            (self.stopLoss_percentFinish - self.stopLoss_percentStart)/self.stopLoss_percentStep
+            (self.stopLoss_percentFinish - self.stopLoss_percentStart) / self.stopLoss_percentStep
         ))
         if self.position == "SHORT":
             self.stopLoss_multipliers = [1.0 + (self.stopLoss_percentStart + n * self.stopLoss_percentStep) / 100.0
@@ -72,18 +72,20 @@ class Trap():
         self.stopLoss_timerStep = stopLoss_timerStep
 
         # состояние алгоритма
-        self.stage="STAGE1"
-        self.priceEntry=0.0
-        self.quantity=0.0
-        self.timeEvent=0.0
+        self.stage = "STAGE1"
+        self.priceEntry = 0.0
+        self.quantity = 0.0
+        self.timeEvent = 0.0
         self.buffer_priceLower = 0.0
         self.buffer_priceUpper = 0.0
         self.recoveryPrice = 0.0
 
+        self.logger = loggercrypto.get_logger(__class__.__name__)
+
     def step(self, price, tradeTime):
-        if self.position=="SHORT":
+        if self.position == "SHORT":
             self._step_short(price, tradeTime)
-        elif self.position=="LONG":
+        elif self.position == "LONG":
             self._step_long(price, tradeTime)
 
     def _step_short(self, price, tradeTime):
@@ -122,7 +124,7 @@ class Trap():
                 self.orderManager.buy(self.recoveryPrice, self.quantity)
                 self.stage = "STAGE3"
                 return
-            elif (time()-self.timeEvent)>self.partiallyFilled_timer:
+            elif (time() - self.timeEvent) > self.partiallyFilled_timer:
                 self.orderManager.cancel()
                 self.quantity = self.orderManager.orderFilledQuantity
                 self.orderManager.buy(self.recoveryPrice, self.quantity)
@@ -131,7 +133,7 @@ class Trap():
 
         elif self.stage == "STAGE2b":
             # таймер буфера
-            if price>=self.buffer_priceLower:
+            if price >= self.buffer_priceLower:
                 self.stage = "STAGE2"
                 return
             elif (time() - self.timeEvent) > self.buffer_timer:
@@ -145,9 +147,8 @@ class Trap():
                 self.stage = "STAGE1"
                 return
 
-
     def _step_long(self, price, tradeTime):
-        if self.stage=="STAGE1":
+        if self.stage == "STAGE1":
             self.priceEntry = price
             burstPrice = price * self.burstMultiplier
             self.quantity = self.orderManager.quoteAsset_balance * self.walletMultiplier / price
@@ -158,7 +159,7 @@ class Trap():
             self.stage = "STAGE2"
             return
 
-        elif self.stage=="STAGE2":
+        elif self.stage == "STAGE2":
             if self.orderManager.orderStatus == "FILLED":
                 self.orderManager.sell(self.recoveryPrice, self.quantity)
                 self.stage = "STAGE3"
@@ -167,11 +168,11 @@ class Trap():
                 self.timeEvent = time()
                 self.stage = "STAGE2a"
                 return
-            elif price<self.buffer_priceLower:
+            elif price < self.buffer_priceLower:
                 self.orderManager.cancel()
                 self.stage = "STAGE1"
                 return
-            elif price>self.buffer_priceUpper:
+            elif price > self.buffer_priceUpper:
                 self.timeEvent = time()
                 self.stage = "STAGE2b"
                 return
@@ -182,7 +183,7 @@ class Trap():
                 self.orderManager.sell(self.recoveryPrice, self.quantity)
                 self.stage = "STAGE3"
                 return
-            elif (time()-self.timeEvent)>self.partiallyFilled_timer:
+            elif (time() - self.timeEvent) > self.partiallyFilled_timer:
                 self.orderManager.cancel()
                 self.quantity = self.orderManager.orderFilledQuantity
                 self.orderManager.sell(self.recoveryPrice, self.quantity)
@@ -191,7 +192,7 @@ class Trap():
 
         elif self.stage == "STAGE2b":
             # таймер буфера
-            if price<=self.buffer_priceUpper:
+            if price <= self.buffer_priceUpper:
                 self.stage = "STAGE2"
                 return
             elif (time() - self.timeEvent) > self.buffer_timer:
@@ -211,9 +212,9 @@ class Trap():
         symbol = self.orderManager.symbol
         self.ws_aggtrade = ThreadedWebsocketManager(api_key=api_key, api_secret=api_secret)
         self.ws_aggtrade.start()
-        if self.position=="SHORT":
+        if self.position == "SHORT":
             self.ws_aggtrade.start_aggtrade_socket(callback=self._callback_aggtrade_short, symbol=symbol)
-        elif self.position=="LONG":
+        elif self.position == "LONG":
             self.ws_aggtrade.start_aggtrade_socket(callback=self._callback_aggtrade_long, symbol=symbol)
 
     def stop_ws(self):

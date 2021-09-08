@@ -2,11 +2,10 @@ import sys
 import logging
 from logging.handlers import RotatingFileHandler
 
-
-FORMATTER = logging.Formatter(fmt="[%(asctime)s] %(levelname)-8s %(name)-8s %(message)s", datefmt="%H:%M:%S %d-%m-%Y")
+FORMATTER = logging.Formatter(fmt="[%(asctime)s] %(levelname)-8s %(name)-6s %(message)s", datefmt="%H:%M:%S %d-%m-%Y")
 LOG_FILE = "log"
-LOG_FILE_SIZE=10*1024*1024
-LOG_FILE_BACKUP_COUNT=5
+LOG_FILE_SIZE = 10 * 1024 * 1024
+LOG_FILE_BACKUP_COUNT = 5
 
 
 def _get_console_handler():
@@ -24,6 +23,7 @@ def _get_file_handler():
 def get_logger(logger_name):
     logger = logging.getLogger(logger_name)
     logger.setLevel(logging.INFO)
-    #logger.addHandler(_get_console_handler())
+    # logger.addHandler(_get_console_handler())
     logger.addHandler(_get_file_handler())
     return logger
+
