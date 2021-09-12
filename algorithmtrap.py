@@ -12,8 +12,10 @@ class Trap:
     def __init__(self, orderManager, walletPercent, position, burstPercent, recoveryPercent,
                  partiallyFilled_timer,
                  buffer_percentLower, buffer_percentUpper, buffer_timer,
+                 stopLoss_timerActivate,
+                 stopLoss_percentActivate,
                  stopLoss_percentStart, stopLoss_percentStep, stopLoss_percentFinish,
-                 stopLoss_timerStart, stopLoss_timerStep):
+                 stopLoss_timerStep):
         """
         Криптобот, работающий по алгоритму "Ловушка"
         Внимание: все проценты считаются от цены входа в алгоритм
@@ -54,6 +56,8 @@ class Trap:
         self.buffer_multiplierUpper = 1.0 + self.buffer_percentUpper / 100.0
         self.buffer_timer = buffer_timer
 
+        self.stopLoss_timerActivate = stopLoss_timerActivate
+        self.stopLoss_percentActivate = stopLoss_percentActivate
         self.stopLoss_percentStart = stopLoss_percentStart
         self.stopLoss_percentStep = stopLoss_percentStep
         self.stopLoss_percentFinish = stopLoss_percentFinish
@@ -61,14 +65,18 @@ class Trap:
             (self.stopLoss_percentFinish - self.stopLoss_percentStart) / self.stopLoss_percentStep
         ))
         if self.position == "SHORT":
-            self.stopLoss_multipliers = [1.0 + (self.stopLoss_percentStart + n * self.stopLoss_percentStep) / 100.0
-                                         for n in range(n_multipliers)]
+            self.stopLoss_multiplierActivate = 1.0 + self.stopLoss_percentActivate / 100.0
+            self.stopLoss_multipliers = [1.0 + (self.stopLoss_percentStart + i * self.stopLoss_percentStep) / 100.0
+                                         for i in range(n_multipliers)]
             self.stopLoss_multipliers.append(1.0 + self.stopLoss_percentFinish / 100.0)
         elif self.position == "LONG":
-            self.stopLoss_multipliers = [1.0 - (self.stopLoss_percentStart + n * self.stopLoss_percentStep) / 100.0
-                                         for n in range(n_multipliers)]
+            self.stopLoss_multiplierActivate = 1.0 - self.stopLoss_percentActivate / 100.0
+            self.stopLoss_multipliers = [1.0 - (self.stopLoss_percentStart + i * self.stopLoss_percentStep) / 100.0
+                                         for i in range(n_multipliers)]
             self.stopLoss_multipliers.append(1.0 - self.stopLoss_percentFinish / 100.0)
-        self.stopLoss_timerStart = stopLoss_timerStart
+
+        self.stopLoss_idx = 0
+        self.stopLoss_n = len(self.stopLoss_multipliers)
         self.stopLoss_timerStep = stopLoss_timerStep
 
         # состояние алгоритма
@@ -80,6 +88,9 @@ class Trap:
         self.buffer_priceUpper = 0.0
         self.burstPrice = 0.0
         self.recoveryPrice = 0.0
+        self.stopLoss_priceActivate = 0.0
+        self.stopLoss_price = 0.0
+
 
         self.logger = loggercrypto.get_logger(__class__.__name__)
 
@@ -144,10 +155,55 @@ class Trap:
                 return
 
         elif self.stage == "STAGE3":
-            # отслеживаем продажу и stoploss
             if self.orderManager.orderStatus == "FILLED":
                 self.stage = "STAGE1"
                 return
+            else:
+                self.timeEvent = time()
+                self.stage = "STAGE4"
+                return
+
+        elif self.stage == "STAGE4":
+            # ждем таймера stoploss
+            if self.orderManager.orderStatus == "FILLED":
+                self.stage = "STAGE1"
+                return
+            elif (time() - self.timeEvent) > self.stopLoss_timerActivate:
+                self.stopLoss_priceActivate = price * self.stopLoss_multiplierActivate
+                self.stage = "STAGE5"
+                return
+
+        elif self.stage == "STAGE5":
+            if self.orderManager.orderStatus == "FILLED":
+                self.stage = "STAGE1"
+                return
+            elif price >= self.stopLoss_priceActivate:
+                # активация Stoploss
+                self.orderManager.cancel()
+                quantity_old = self.quantity
+                self.quantity = self.orderManager.orderFilledQuantity
+                self.stopLoss_price = price*self.stopLoss_multipliers[self.stopLoss_idx]
+                self.stopLoss_idx+=1
+                self.orderManager.buy(self.stopLoss_price, self.quantity)
+                self.timeEvent = time()
+                self.stage = "STAGE6"
+                return
+        elif self.stage == "STAGE6":
+            #
+            if self.orderManager.orderStatus == "FILLED":
+                self.logger.info(f"{self.stage}-FINISH-STOP_LOSS price={price}")
+                self.stage = "STAGE1"
+                return
+            elif (self.stopLoss_idx!=self.stopLoss_n) and ((time() - self.timeEvent) > self.stopLoss_timerStep):
+                self.orderManager.cancel()
+                quantity_old = self.quantity
+                self.quantity = self.orderManager.orderFilledQuantity
+                self.stopLoss_price = price * self.stopLoss_multipliers[self.stopLoss_idx]
+                self.stopLoss_idx += 1
+                self.orderManager.buy(self.stopLoss_price, self.quantity)
+                self.timeEvent = time()
+                return
+
 
     def _step_long(self, price, tradeTime):
         if self.stage == "STAGE1":
@@ -214,13 +270,73 @@ class Trap:
                 self.logger.info(f"{self.stage}-BUFFER_UPPER-OUT_OF_TIME={(time() - self.timeEvent)} price={price}")
                 self.stage = "STAGE1"
                 return
-
+        # Обработка Stop Loss'ов
         elif self.stage == "STAGE3":
-            # отслеживаем продажу и stoploss
             if self.orderManager.orderStatus == "FILLED":
                 self.logger.info(f"{self.stage}-FINISH price={price}")
                 self.stage = "STAGE1"
                 return
+            else:
+                self.timeEvent = time()
+                self.logger.info(f"{self.stage}-ACTIVATE-STOP_LOSS_TIMER"
+                                 f"price={price} Trap={self.burstPrice}/{self.recoveryPrice}")
+                self.stage = "STAGE4"
+                return
+
+        elif self.stage == "STAGE4":
+            # ждем таймера stoploss
+            if self.orderManager.orderStatus == "FILLED":
+                self.logger.info(f"{self.stage}-FINISH price={price}")
+                self.stage = "STAGE1"
+                return
+            elif (time() - self.timeEvent) > self.stopLoss_timerActivate:
+                self.stopLoss_priceActivate = price * self.stopLoss_multiplierActivate
+                self.logger.info(f"{self.stage}-ACTIVATE-STOP_LOSS_PRICE_ACTIVATE price={price} "
+                                 f"priceActivate={self.stopLoss_priceActivate}  Trap={self.burstPrice}/{self.recoveryPrice}")
+                self.stage = "STAGE5"
+                return
+
+        elif self.stage == "STAGE5":
+            if self.orderManager.orderStatus == "FILLED":
+                self.logger.info(f"{self.stage}-FINISH price={price}")
+                self.stage = "STAGE1"
+                return
+            elif price <= self.stopLoss_priceActivate:
+                # активация Stoploss
+                self.orderManager.cancel()
+                quantity_old = self.quantity
+                self.quantity = self.orderManager.orderFilledQuantity
+                self.stopLoss_price = price*self.stopLoss_multipliers[self.stopLoss_idx]
+                self.stopLoss_idx+=1
+                self.orderManager.sell(self.stopLoss_price, self.quantity)
+                self.timeEvent = time()
+                self.logger.info(f"{self.stage}-ACTIVATE_STOP_LOSS price={price} stopLoss={self.stopLoss_price}")
+                self.stage = "STAGE6"
+                return
+
+        elif self.stage == "STAGE6":
+            #
+            if self.orderManager.orderStatus == "FILLED":
+                self.logger.info(f"{self.stage}-FINISH-STOP_LOSS price={price} losses=Unknown")
+                self.stage = "STAGE1"
+                return
+            elif (self.stopLoss_idx!=self.stopLoss_n) and ((time() - self.timeEvent) > self.stopLoss_timerStep):
+                self.orderManager.cancel()
+                quantity_old = self.quantity
+                self.quantity = self.orderManager.orderFilledQuantity
+                self.stopLoss_price = price * self.stopLoss_multipliers[self.stopLoss_idx]
+                self.stopLoss_idx += 1
+                self.orderManager.sell(self.stopLoss_price, self.quantity)
+                self.timeEvent = time()
+                self.logger.info(f"{self.stage}-STOP_LOSS price={price} stopLoss={self.stopLoss_price}")
+                return
+
+
+
+
+
+
+
 
     def start_ws(self):
         api_key = self.orderManager.api_key
